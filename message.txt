@@ -1,0 +1,222 @@
+#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <stdio.h>
+#include <mysql.h>
+#include <pthread.h>
+
+
+typedef struct 
+{	
+	char nombre[20];
+	int socket;
+	
+}TConectado;
+
+typedef struct {
+	
+	TConectado conectados[100];
+	int num; 
+	
+}TListaCon;
+
+
+TListaCon lista;
+int i;
+int sockets[100];
+char cadenafinal[200];
+
+
+//Login
+int LogIn(char nombre[20],char contra[20])
+{
+	MYSQL *conn;
+	int err;
+	MYSQL_RES *resultado;
+	MYSQL_ROW row;
+	char consulta[80];
+	char res[80];
+	//parte de mysql
+	char nom[20], cnt[20]; //variables para comparar nombre y contraseￃﾱa
+	
+	conn = mysql_init(NULL);
+	
+	if (conn==NULL) 
+	{
+		printf ("Error al crear la conexion: %u %s\n", mysql_errno(conn), mysql_error(conn));
+		exit (1);	
+	}
+	
+	conn = mysql_real_connect (conn, "localhost","root","mysql","yonunca",0, NULL, 0);
+	
+	if (conn==NULL) 
+	{
+		printf	 ("Error al inicializar la conexion: %u %s\n", mysql_errno(conn), mysql_error(conn));
+		exit (1);
+	}
+	
+	strcpy(consulta,"SELECT Jugador.Nombre,Jugador.Pass FROM Jugador WHERE Jugador.Nombre = '");
+	strcat(consulta, nombre);
+	strcat(consulta, "'");
+	printf(consulta);
+	err=mysql_query (conn, consulta);
+	
+	if (err!=0) 
+	{
+		printf ("Error al consultar datos de la base %u %s\n", mysql_errno(conn), mysql_error(conn));
+		exit (1);
+	}
+	resultado = mysql_store_result (conn);
+	row = mysql_fetch_row (resultado);
+	
+	if (row == NULL) 
+		printf ("No se han obtenido datos en la consulta\n");
+	
+	else
+	{
+		strcpy(nom,row[0]);
+		strcpy(cnt,row[1]);
+		
+		printf("nombre recibido: %s, contra recibida: %s\n", nom, cnt);
+		row = mysql_fetch_row (resultado);
+	}
+	
+	if((strcmp(nom,nombre) == 0)  && (strcmp(cnt,contra) == 0))
+	{
+		return 0;
+	}
+	
+	else
+	   return 1;
+	
+		
+}
+
+
+
+
+void DameConectados (TListaCon *lista, char conectados[300])
+{
+	//Pone en conectados los nombres de todos los conectados separados por /.
+	//Primero pone el numero de conectados. 
+	//Ejemplo: "3/Charly/Cesar/Max"
+	sprintf(conectados,"%d",lista->num);
+	int i;
+	for(i=0;i<lista->num;i++)
+		sprintf(conectados, "%s/%s", conectados,lista->conectados[i].nombre);
+}
+
+
+int Eliminar ( TListaCon *lista, char nombre [20] )
+{
+	int pos = DamePosicion(&lista, nombre);
+	printf("Nombre del que se va: %s\n", lista->conectados[pos].nombre);
+	if(pos == -1)
+	{
+		return pos;
+	}
+	else{
+		for(int i = pos; i<lista->num-1; i++)
+		{
+			lista->conectados[i].socket = lista->conectados[i+1].socket;
+			//strcpy(lista->conectados[i].nombre, lista->conectados[i+1].nombre);
+		}
+		lista->num--;
+		printf("Nombre del que se queda su posicion: %s\n", lista->conectados[pos].nombre);
+		return 0;
+	}
+}
+int DameSocket (TListaCon *lista, char nombre [20])
+{
+	int encontrado = 0;
+	int i = 0;
+	
+	while ((i < lista->num) && (!encontrado))
+	{
+		if (strcmp ( lista->conectados[i].nombre, nombre) ==0)
+			encontrado = 1;
+		else
+			i++;
+	}
+	
+	if (!encontrado)
+		return lista->conectados[i].socket;
+	else 
+		return -1;
+}
+
+int Pon ( TListaCon *lista, char nombre [20], int socket)
+{
+	if(lista->num == 100) // ya hay 100 elementos
+		return 0;
+	else 
+	{
+		lista->conectados[lista->num].socket = socket;
+		strcpy(lista->conectados[lista->num].nombre,nombre);
+		lista->num ++;
+		return 1; // todo ha ido bien
+	}
+}
+
+int DamePosicion (TListaCon *lista, char nombre [20])
+{
+	int encontrado = 0;
+	int i = 0;
+	
+	while ((i < lista->num) && (!encontrado))
+	{
+		if (strcmp ( lista->conectados[i].nombre, nombre) ==0)
+			encontrado = 1;
+		else
+			i++;
+	}
+	
+	if (!encontrado)
+		return i;
+	else 
+		return -1;
+}
+void Cadena (TListaCon *lista, char cadenafinal [100])
+{
+	char cadena[200];
+	int cont=0;
+	for (int i=0;i<lista->num;i++){
+		printf("%s\n",lista->conectados[lista->num].nombre);
+		sprintf (cadena,"%s\%s/",cadena,lista->conectados[i].nombre);
+		cont ++;
+	}
+	sprintf(cadenafinal,"5/%d/%s", lista->num, cadena);
+	printf("%s\n",cadenafinal);
+}
+void SelectPregunta (char p[80], char respuesta[200])
+{
+	MYSQL *conn;
+	int err;
+	MYSQL_RES *resultado;
+	MYSQL_ROW row;
+	char consulta [80];
+	char res [80];
+	
+	// arrancamos 
+	p = strtok(NULL, "/");
+	char pregunta[100];
+	strcpy(pregunta,p);
+	p=strtok(NULL,"/");
+	// hacemos mysql
+	printf("pregunta: %s\n", pregunta);
+	
+	conn = mysql_init(NULL);
+	
+	if (conn==NULL) 
+	{
+		printf ("Error al crear la conexion: %u %s\n", mysql_errno(conn), mysql_error(conn));
+		exit (1);
+	}
+	
+	conn = mysql_real_connect (conn, "localhost","root", "mysql", "yonunca",0, NULL, 0);
+	if (conn==NULL) 
+	{
+		printf ("Error al inicializar la conexion: %u %s
